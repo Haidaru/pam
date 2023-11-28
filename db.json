@@ -1,0 +1,87 @@
+{
+  "content": [
+    {
+      "id": 1,
+      "name": "Haidar",
+      "email": "Haidar@gmail.com",
+      "status": "bukan staff",
+      "gender": "Laki-laki",
+      "phone": 789456122,
+      "rfid": 789456122,
+      "faceid": 789456122,
+      "fingerid": 789456122
+    },
+    {
+      "id": 2,
+      "name": "Awid",
+      "email": "Awid@gmail.com",
+      "status": "staff",
+      "gender": "Laki-laki",
+      "phone": 789456123,
+      "rfid": 789456123,
+      "faceid": 789456123,
+      "fingerid": 789456123
+    },
+    {
+      "id": 3,
+      "name": "Awidyo",
+      "email": "Awidyo@gmail.com",
+      "status": "bukan staff",
+      "gender": "Laki-laki",
+      "phone": 789456124,
+      "rfid": 789456124,
+      "faceid": 789456124,
+      "fingerid": 789456124
+    },
+    {
+      "id": 4,
+      "name": "Adam",
+      "email": "Adam@gmail.com",
+      "status": "staff",
+      "gender": "Laki-laki",
+      "phone": 789456125,
+      "rfid": 789456125,
+      "faceid": 789456125,
+      "fingerid": 789456125
+    },
+    {
+      "id": 5,
+      "name": "Beni",
+      "email": "Beni@gmail.com",
+      "status": "bukan staff",
+      "gender": "Laki-laki",
+      "phone": 789456126,
+      "rfid": 789456126,
+      "faceid": 789456126,
+      "fingerid": 789456126
+    },
+    {
+      "id": 6,
+      "name": "Ronaldo",
+      "email": "Ronaldo@gmail.com",
+      "status": "staff",
+      "gender": "Laki-laki",
+      "phone": 789456127,
+      "rfid": 789456127,
+      "faceid": 789456127,
+      "fingerid": 789456127
+    },
+    {
+      "id": 7,
+      "name": "Messi",
+      "email": "Messi@gmail.com",
+      "status": "bukan staff",
+      "gender": "Laki-laki",
+      "phone": 789456128,
+      "rfid": 789456128,
+      "faceid": 789456128,
+      "fingerid": 789456128
+    }
+  ],
+  "pagination": {
+    "total": 15,
+    "perPage": 7,
+    "currentPage": 1,
+    "totalPages": 3
+  }
+}
