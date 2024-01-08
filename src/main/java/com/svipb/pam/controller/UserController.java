@@ -9,9 +9,12 @@ import org.springframework.context.support.DefaultMessageSourceResolvable;
 import org.springframework.dao.DuplicateKeyException;
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.PageRequest;
+import org.springframework.data.domain.Sort;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
+import org.springframework.util.StringUtils;
 import org.springframework.validation.BindingResult;
+import org.springframework.validation.annotation.Validated;
 import org.springframework.web.bind.annotation.*;
 
 import java.util.List;
@@ -21,9 +24,7 @@ import java.util.stream.Collectors;
 @RestController
 @RequestMapping("/users")
 public class UserController {
-
     private final UserService userService;
-    private Process logger;
 
     public UserController(@Autowired UserService userService) {
         this.userService = userService;
@@ -31,49 +32,65 @@ public class UserController {
 
     // Retrieve all Users
     @GetMapping("/all")
-    public ResponseEntity<Object> getAllUsersWithPagination(
-            @RequestHeader(name = "page", defaultValue = "0") int page,
-            @RequestHeader(name = "size", defaultValue = "10") int size) {
-
-        return handleGetAllUsersResponse(() -> userService.getAllUsersWithPagination(page, size));
+    public ResponseEntity<Object> getAllUsers(
+            @RequestParam(name = "page", defaultValue = "0") int page,
+            @RequestParam(name = "size", defaultValue = "10") int size) {
+        // Call the service method
+        return userService.getAllUsersWithPagination(page, size);
     }
 
     // Handle the response for getAllUsersWithPagination
-    private ResponseEntity<Object> handleGetAllUsersResponse(Supplier<Page<User>> action) {
-        try {
-            Page<User> usersPage = action.get();
-            if (usersPage.isEmpty()) {
-                return new ResponseEntity<>("Tidak ditemukan user.", HttpStatus.NOT_FOUND);
-            } else {
-                return new ResponseEntity<>(usersPage, HttpStatus.OK);
-            }
-        } catch (Exception e) {
-            return new ResponseEntity<>("Error: " + e.getMessage(), HttpStatus.INTERNAL_SERVER_ERROR);
-        }
+    @ExceptionHandler(ResourceNotFoundException.class)
+    public ResponseEntity<Object> handleResourceNotFoundException(ResourceNotFoundException e) {
+        return new ResponseEntity<>("Resource not found: " + e.getMessage(), HttpStatus.NOT_FOUND);
+    }
+
+    @ExceptionHandler(Exception.class)
+    public ResponseEntity<Object> handleException(Exception e) {
+        return new ResponseEntity<>("Error: " + e.getMessage(), HttpStatus.INTERNAL_SERVER_ERROR);
     }
 
     // Add User
     @PostMapping("/add")
-    public ResponseEntity<String> addUser(@Valid @RequestBody User user, BindingResult bindingResult) {
-        if (bindingResult.hasErrors()) {
-            // Handle validation errors
-            String validationErrorMessage = bindingResult.getAllErrors()
-                    .stream()
-                    .map(DefaultMessageSourceResolvable::getDefaultMessage)
-                    .collect(Collectors.joining(", "));
-            return new ResponseEntity<>("Validation errors: " + validationErrorMessage, HttpStatus.BAD_REQUEST);
-        } else {
-            try {
-                String result = userService.addUser(user);
-                return new ResponseEntity<>(result, HttpStatus.OK);
-            } catch (Exception e) {
-                // Handle other exceptions and return an appropriate response
-                return new ResponseEntity<>("Failed to add user: " + "there's already a user with the same email", HttpStatus.INTERNAL_SERVER_ERROR);
-            }
+    public ResponseEntity<String> addUser(@Validated @RequestBody User user) {
+        try {
+            User existingUser = userService.getUserByEmail(user.getEmail());
+
+            UserStatus userStatus = checkExistingUser(existingUser);
+            return switch (userStatus) {
+                case ALREADY_EXISTS -> ResponseEntity.status(HttpStatus.CONFLICT)
+                        .body("User with email " + user.getEmail() + " already exists");
+                case DOES_NOT_EXIST -> {
+                    ResponseEntity<String> validationResult = validateUser(user);
+                    yield validationResult.getStatusCode() == HttpStatus.OK ?
+                            userService.addUser(user) :
+                            validationResult;
+                }
+            };
+        } catch (Exception e) {
+            return ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR)
+                    .body("An error occurred while processing the request: " + e.getMessage());
         }
     }
 
+    private ResponseEntity<String> validateUser(User user) {
+        if (StringUtils.isEmpty(user.getName()) || StringUtils.isEmpty(user.getEmail()) || StringUtils.isEmpty(user.getStatus())) {
+            return ResponseEntity.badRequest().body("Validation errors: Name, email, and status cannot be empty");
+        }
 
+        // Additional validation logic if needed
+
+        return ResponseEntity.ok("Validation successful");
+    }
+
+    private UserStatus checkExistingUser(User existingUser) {
+        return existingUser != null ? UserStatus.ALREADY_EXISTS : UserStatus.DOES_NOT_EXIST;
+    }
+
+    private enum UserStatus {
+        ALREADY_EXISTS,
+        DOES_NOT_EXIST
+    }
 
 
     // Update User
@@ -96,9 +113,8 @@ public class UserController {
             return new ResponseEntity<>(e.getMessage(), HttpStatus.NOT_FOUND);
         } catch (DuplicateKeyException e) {
             return new ResponseEntity<>(e.getMessage(), HttpStatus.CONFLICT);
-        }
-        catch (Exception e) {
-            return new ResponseEntity<>("Failed to update user: " + "There's no such data exist.", HttpStatus.INTERNAL_SERVER_ERROR);
+        } catch (Exception e) {
+            return new ResponseEntity<>(e.getMessage(), HttpStatus.INTERNAL_SERVER_ERROR);
         }
     }
 
@@ -166,49 +182,33 @@ public class UserController {
         }
     }
 
-    // Sort Users by Name in Ascending Order
     @GetMapping("/sortByNameAscending")
     public ResponseEntity<Object> sortUsersByNameAscending(
             @RequestHeader(name = "page", defaultValue = "0") int page,
             @RequestHeader(name = "size", defaultValue = "10") int size) {
 
-        return handleSortUsersByNameAscendingResponse(() -> userService.sortUsersByNameAscending(page, size));
+        return handleSortUsersResponse(() -> userService.sortUsersByName(page, size, Sort.Order.asc("name")));
     }
 
-    // Handle the response for sortUsersByNameAscending
-    private ResponseEntity<Object> handleSortUsersByNameAscendingResponse(Supplier<Page<User>> action) {
-        try {
-            Page<User> usersPage = action.get();
-            if (usersPage.isEmpty()) {
-                return new ResponseEntity<>("No users found for sorting by name in ascending order", HttpStatus.NOT_FOUND);
-            } else {
-                return ResponseEntity.ok(usersPage);
-            }
-        } catch (Exception e) {
-            return new ResponseEntity<>("Error sorting users by name in ascending order: " + e.getMessage(), HttpStatus.INTERNAL_SERVER_ERROR);
-        }
-    }
-
-    // Sort Users by Name in Descending Order
     @GetMapping("/sortByNameDescending")
     public ResponseEntity<Object> sortUsersByNameDescending(
             @RequestParam(name = "page", defaultValue = "0") int page,
             @RequestParam(name = "size", defaultValue = "10") int size) {
 
-        return handleSortUsersByNameDescendingResponse(() -> userService.sortUsersByNameDescending(page, size));
+        return handleSortUsersResponse(() -> userService.sortUsersByName(page, size, Sort.Order.desc("name")));
     }
 
-    // Handle the response for sortUsersByNameDescending
-    private ResponseEntity<Object> handleSortUsersByNameDescendingResponse(Supplier<Page<User>> action) {
+    private ResponseEntity<Object> handleSortUsersResponse(Supplier<Page<User>> action) {
         try {
             Page<User> usersPage = action.get();
             if (usersPage.isEmpty()) {
-                return new ResponseEntity<>("No users found for sorting by name in descending order", HttpStatus.NOT_FOUND);
+                return new ResponseEntity<>("No users found for sorting", HttpStatus.NOT_FOUND);
             } else {
                 return ResponseEntity.ok(usersPage);
             }
         } catch (Exception e) {
-            return new ResponseEntity<>("Error sorting users by name in descending order: " + e.getMessage(), HttpStatus.INTERNAL_SERVER_ERROR);
+            return new ResponseEntity<>("Error sorting users: " + e.getMessage(), HttpStatus.INTERNAL_SERVER_ERROR);
         }
     }
+
 }

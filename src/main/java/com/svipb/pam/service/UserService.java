@@ -10,10 +10,11 @@ import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.dao.DataIntegrityViolationException;
 import org.springframework.dao.DuplicateKeyException;
 import org.springframework.data.domain.*;
+import org.springframework.http.HttpStatus;
+import org.springframework.http.ResponseEntity;
 import org.springframework.stereotype.Service;
 
 import java.util.List;
-import java.util.Objects;
 import java.util.Optional;
 
 @Service
@@ -29,29 +30,44 @@ public class UserService {
     }
 
     // Retrieve all Users
-    public Page<User> getAllUsersWithPagination(int page, int size) {
-        // Create a PageRequest with the given page, size, and sorting (if needed)
-        PageRequest pageRequest = PageRequest.of(page, size);
+    public ResponseEntity<Object> getAllUsersWithPagination(int page, int size) {
+        try {
+            Page<User> usersPage = retrieveAllUsersWithPagination(page, size);
+            if (usersPage.isEmpty()) {
+                return new ResponseEntity<>("Tidak ditemukan user.", HttpStatus.NOT_FOUND);
+            } else {
+                return new ResponseEntity<>(usersPage, HttpStatus.OK);
+            }
+        } catch (ResourceNotFoundException e) {
+            // Handle the specific exception and return a custom response
+            return new ResponseEntity<>(e.getMessage(), HttpStatus.NOT_FOUND);
+        } catch (Exception e) {
+            // Handle other exceptions and return an appropriate response
+            return new ResponseEntity<>("Error: " + e.getMessage(), HttpStatus.INTERNAL_SERVER_ERROR);
+        }
+    }
 
-        // Use the findAll method with pagination
-        return userRepository.findAll(pageRequest);
+    // Handle the response for getAllUsersWithPagination
+    private Page<User> retrieveAllUsersWithPagination(int page, int size) throws ResourceNotFoundException {
+        Pageable pageable = PageRequest.of(page, size);
+        return userRepository.findAll(pageable);
     }
 
     // Add User
     @Transactional
-    public String addUser(User user) {
+    public ResponseEntity<String> addUser(User user) {
         try {
             checkDuplicateKeysForAdd(user);
             userRepository.save(user);
-            return "Berhasil menambahkan user";
+            return ResponseEntity.ok("Berhasil menambahkan user");
         } catch (DuplicateKeyException e) {
-            throw e;
+            return ResponseEntity.status(HttpStatus.CONFLICT).body(e.getMessage());
         } catch (DataIntegrityViolationException e) {
             handleDataIntegrityViolationException(e);
-            throw new RuntimeException("Failed to add user: " + e.getMessage());
+            return ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR).body("Failed to add user: " + e.getMessage());
         } catch (Exception e) {
             logger.error("Failed to add user: " + e.getMessage(), e);
-            throw new RuntimeException("Failed to add user: " + e.getMessage());
+            return ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR).body("Failed to add user: " + e.getMessage());
         }
     }
 
@@ -62,20 +78,27 @@ public class UserService {
         try {
             // Check for duplicate entries
             checkDuplicateKeysForUpdate(user);
-            userRepository.save(user);
-            return "Berhasil mengupdate user";
+
+            // Retrieve the existing user from the database
+            Optional<User> existingUserOptional = userRepository.findById(user.getId());
+
+            if (existingUserOptional.isPresent()) {
+                User existingUser = existingUserOptional.get();
+
+                // Update only the email field
+                existingUser.setEmail(user.getEmail());
+
+                // Save the updated user
+                userRepository.save(existingUser);
+
+                return "Berhasil mengupdate user";
+            } else {
+                throw new ResourceNotFoundException("User not found with id: " + user.getId());
+            }
         } catch (DuplicateKeyException e) {
             throw e;
         } catch (Exception e) {
-            Optional<User> existingUser = userRepository.findByEmailAndIdNot(user.getEmail(), user.getId());
-            existingUser.ifPresent(existing -> {
-                if (existing.getId() != user.getId()) {
-                    throw new DuplicateKeyException("Email already exists");
-                }
-            });
-
-            // Handle other exceptions and return an appropriate response
-            throw new RuntimeException("Failed to update user: " + "there's already a user with the same email", e);
+            throw new RuntimeException("Failed to update user. " + e.getMessage(), e);
         }
     }
 
@@ -133,35 +156,14 @@ public class UserService {
         return userRepository.findAll(example, pageable);
     }
 
-    // Sort Users by Name in Ascending Order
-    public Page<User> sortUsersByNameAscending(int page, int size) {
+    public Page<User> sortUsersByName(int page, int size, Sort.Order order) {
         try {
-            System.out.println("Sorting Users by Name in Ascending Order");
+            System.out.println("Sorting Users by Name in " + (order.isAscending() ? "Ascending" : "Descending") + " Order");
 
-            // Create a sort object with the "name" property and specify ascending order
-            Sort sort = Sort.by(Sort.Order.asc("name"));
-
-            // Use the findAll method with sorting and pagination
+            Sort sort = Sort.by(order);
             return userRepository.findAll(PageRequest.of(page, size, sort));
         } catch (Exception e) {
-            // Log the exception or rethrow as a more specific exception if necessary
-            throw new RuntimeException("Error sorting users by name in ascending order", e);
-        }
-    }
-
-    // Sort Users by Name in Descending Order
-    public Page<User> sortUsersByNameDescending(int page, int size) {
-        try {
-            System.out.println("Sorting Users by Name in Descending Order");
-
-            // Create a sort object with the "name" property and specify descending order
-            Sort sort = Sort.by(Sort.Order.desc("name"));
-
-            // Use the findAll method with sorting and pagination
-            return userRepository.findAll(PageRequest.of(page, size, sort));
-        } catch (Exception e) {
-            // Log the exception or rethrow as a more specific exception if necessary
-            throw new RuntimeException("Error sorting users by name in descending order", e);
+            throw new RuntimeException("Error sorting users: " + e.getMessage(), e);
         }
     }
 
@@ -181,8 +183,8 @@ public class UserService {
         }
     }
 
+    // Check Duplicate Keys for Adding User
     public void checkDuplicateKeysForAdd(User user) {
-        // Check for duplicate keys directly in the database during add
         userRepository.findByEmail(user.getEmail())
                 .ifPresent(existingUserWithEmail -> {
                     throw new DuplicateKeyException("Email already exists");
@@ -205,44 +207,30 @@ public class UserService {
     }
 
 
+    // Check Duplicate Keys for Updating User
     private void checkDuplicateKeysForUpdate(User user) {
-        // Check for duplicate keys directly in the database during update
-        Objects.requireNonNull(UserRepository.findByEmailAndIdNot(user.getEmail(), user.getId()))
+        userRepository.findByEmailAndIdNot(user.getEmail(), user.getId())
                 .ifPresent(existingUserWithEmail -> {
                     throw new DuplicateKeyException("Email already exists");
                 });
 
-        Objects.requireNonNull(UserRepository.findByRfidAndIdNot(user.getRfid(), user.getId()))
+        userRepository.findByRfidAndIdNot(user.getRfid(), user.getId())
                 .ifPresent(existingUserWithRfid -> {
                     throw new DuplicateKeyException("RFID " + user.getRfid() + " already exists");
                 });
 
-        Objects.requireNonNull(UserRepository.findByFaceidAndIdNot(user.getFaceid(), user.getId()))
+        userRepository.findByFaceidAndIdNot(user.getFaceid(), user.getId())
                 .ifPresent(existingUserWithFaceid -> {
                     throw new DuplicateKeyException("FaceID " + user.getFaceid() + " already exists");
                 });
 
-        Objects.requireNonNull(UserRepository.findByFingeridAndIdNot(user.getFingerid(), user.getId()))
+        userRepository.findByFingeridAndIdNot(user.getFingerid(), user.getId())
                 .ifPresent(existingUserWithFingerid -> {
                     throw new DuplicateKeyException("FingerID " + user.getFingerid() + " already exists");
                 });
-        if (!userRepository.existsById(user.getId())) {
-            throw new ResourceNotFoundException("There's no such data exist.");
-        }
     }
 
-    private void handleDuplicateKeyException(Exception e) {
-        if (e.getCause() instanceof org.hibernate.exception.ConstraintViolationException constraintViolationException) {
-            String constraintName = constraintViolationException.getConstraintName();
-            if (constraintName != null && constraintName.contains("user_email_key")) {
-                throw new DuplicateKeyException("Email already exists");
-            } else if (constraintName != null && constraintName.contains("user_rfid_key")) {
-                throw new DuplicateKeyException("RFID already exists");
-            } else if (constraintName != null && constraintName.contains("user_faceid_key")) {
-                throw new DuplicateKeyException("FaceID already exists");
-            } else if (constraintName != null && constraintName.contains("user_fingerid_key")) {
-                throw new DuplicateKeyException("FingerID already exists");
-            }
-        }
+    public User getUserByEmail(String email) {
+        return userRepository.findByEmail(email).orElse(null);
     }
 }

@@ -17,11 +17,23 @@ public interface UserRepository extends JpaRepository<User, Integer> {
 
     Optional<User> findByFingerid(int fingerid);
 
-    Optional<User> findByEmailAndIdNot(String email, int id);
+    default Optional<User> findByEmailAndIdNot(String email, int id) {
+        // Implement the method using JpaRepository's findById
+        return findById(id).filter(user -> user.getEmail().equals(email));
+    }
 
-    Optional<User> findByRfidAndIdNot(int rfid, int id);
+    default Optional<User> findByRfidAndIdNot(int rfid, int id) {
+        // Implement the method using JpaRepository's findById
+        return findById(id).filter(user -> user.getRfid() == rfid);
+    }
 
-    Optional<User> findByFaceidAndIdNot(int faceid, int id);
+    default Optional<User> findByFaceidAndIdNot(int faceid, int id) {
+        // Implement the method using JpaRepository's findById
+        return findById(id).filter(user -> user.getFaceid() == faceid);
+    }
 
-    Optional<User> findByFingeridAndIdNot(int fingerid, int id);
+    default Optional<User> findByFingeridAndIdNot(int fingerid, int id) {
+        // Implement the method using JpaRepository's findById
+        return findById(id).filter(user -> user.getFingerid() == fingerid);
+    }
 }

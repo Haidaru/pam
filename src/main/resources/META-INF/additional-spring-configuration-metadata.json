@@ -1,0 +1,8 @@
+{
+  "properties": [
+    {
+      "name": "pam.url.dev",
+      "type": "java.lang.String",
+      "description": "Development PAM URL."
+  }
+] }
